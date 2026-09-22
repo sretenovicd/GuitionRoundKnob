@@ -39,7 +39,7 @@ void page_teams_create(lv_obj_t *parent) {
 
     // Big Mic Mute / Unmute Button
     btn_mic = lv_btn_create(teams_page);
-    lv_obj_set_size(btn_mic, 140, 75);
+    lv_obj_set_size(btn_mic, 160, 75);
     lv_obj_align(btn_mic, LV_ALIGN_CENTER, 0, -25);
     lv_obj_set_style_radius(btn_mic, 20, 0);
     lv_obj_set_style_bg_color(btn_mic, lv_color_hex(0xE63946), 0); // Default Muted Red
@@ -53,7 +53,7 @@ void page_teams_create(lv_obj_t *parent) {
 
     // Raise / Lower Hand Button
     btn_hand = lv_btn_create(teams_page);
-    lv_obj_set_size(btn_hand, 140, 55);
+    lv_obj_set_size(btn_hand, 160, 55);
     lv_obj_align(btn_hand, LV_ALIGN_CENTER, 0, 55);
     lv_obj_set_style_radius(btn_hand, 18, 0);
     lv_obj_set_style_bg_color(btn_hand, lv_color_hex(0x242D3D), 0); // Default inactive

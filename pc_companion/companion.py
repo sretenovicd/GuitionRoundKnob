@@ -26,6 +26,11 @@ try:
 except ImportError:
     HAS_WINRT = False
 
+try:
+    from teams_client import TeamsClient
+except ImportError:
+    from pc_companion.teams_client import TeamsClient
+
 
 def find_esp32_port():
     """Locate the ESP32-S3 serial port, bypassing Bluetooth port collisions."""
@@ -269,10 +274,14 @@ async def async_main():
     media_watcher = MediaWatcher()
     await media_watcher.init_manager()
 
+    teams_client = TeamsClient()
+    teams_task = asyncio.create_task(teams_client.run())
+
     last_bytes_recv = psutil.net_io_counters().bytes_recv
     last_bytes_sent = psutil.net_io_counters().bytes_sent
     last_net_check = time.time()
     last_media_sent = 0
+    last_teams_sent = 0
 
     try:
         while True:
@@ -318,22 +327,42 @@ async def async_main():
                 media_pkt = await media_watcher.get_media_packet()
                 ser.write((json.dumps(media_pkt) + "\n").encode("utf-8"))
 
-            # 4. Check Workstation Lock State
+            # 4. Send MS Teams State (on change or every 2.0 seconds)
+            if teams_client.state_changed or (current_time - last_teams_sent >= 2.0):
+                last_teams_sent = current_time
+                teams_pkt = teams_client.get_packet()
+                ser.write((json.dumps(teams_pkt) + "\n").encode("utf-8"))
+
+            # 5. Check Workstation Lock State
             if is_workstation_locked():
                 ser.write((json.dumps({"type": "lock", "locked": True}) + "\n").encode("utf-8"))
 
-            # 5. Read incoming responses or events from device
+            # 6. Read incoming responses or events from device
             while ser.in_waiting:
                 line = ser.readline().decode("utf-8", errors="ignore").strip()
                 if line:
                     print(f"[Device]: {line}")
+                    if line.startswith("{") and "teams_toggle" in line:
+                        try:
+                            cmd_data = json.loads(line)
+                            cmd = cmd_data.get("cmd")
+                            if cmd == "teams_toggle_mute":
+                                await teams_client.toggle_mute()
+                                ser.write((json.dumps(teams_client.get_packet()) + "\n").encode("utf-8"))
+                            elif cmd == "teams_toggle_hand":
+                                await teams_client.toggle_hand()
+                                ser.write((json.dumps(teams_client.get_packet()) + "\n").encode("utf-8"))
+                        except Exception as e:
+                            print(f"[Teams] Error handling command: {e}")
 
             await asyncio.sleep(0.5)
 
     except (KeyboardInterrupt, asyncio.CancelledError):
         print("\nExiting companion service.")
     finally:
+        teams_task.cancel()
         ser.close()
+
 
 
 def main():
