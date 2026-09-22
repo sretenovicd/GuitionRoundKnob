@@ -136,6 +136,7 @@ void protocol_update() {
                                     uint8_t r = doc["r"];
                                     uint8_t g = doc["g"];
                                     uint8_t b = doc["b"];
+                                    page_media_set_accent_color(r, g, b);
                                     led_ring_set_accent_color(r, g, b);
                                     led_ring_set_mode(playing ? LED_MODE_MUSIC_ACCENT : LED_MODE_IDLE_BREATHING);
                                 }
