@@ -9,3 +9,4 @@ compile_commands.json
 supporting/
 __pycache__/
 *.pyc
+*.log
