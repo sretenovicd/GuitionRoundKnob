@@ -157,17 +157,9 @@ void led_ring_update() {
         return;
     }
 
-    // 7. Idle Breathing (Default)
-    static float breath_angle = 0;
-    breath_angle += 0.03f;
-    if (breath_angle > 6.28318f) breath_angle -= 6.28318f;
-
-    float factor = (sinf(breath_angle) + 1.0f) * 0.5f; // 0.0 to 1.0
-    uint8_t br = (uint8_t)(10 + factor * 70); // Gentle breathing brightness
-
+    // 7. Idle (Default): Off to keep desk dark and calm, no bright blue ring
     for (int i = 0; i < LED_RING_COUNT; i++) {
-        // Soft blue-purple gradient
-        strip.setPixelColor(i, strip.Color((uint8_t)(br * 0.4f), 0, (uint8_t)(br * 0.9f)));
+        strip.setPixelColor(i, strip.Color(0, 0, 0));
     }
     strip.show();
 }

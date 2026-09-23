@@ -30,6 +30,8 @@ static lv_obj_t *lbl_date = NULL;
 static lv_obj_t *lbl_badge = NULL;
 
 // Subtle Chronograph 60-Tick Ring & 3-Dot Comet Tail
+static lv_obj_t *symbol_hour = NULL;
+static lv_obj_t *symbol_minute = NULL;
 static lv_obj_t *dot_sec_head = NULL;
 static lv_obj_t *dot_sec_trail1 = NULL;
 static lv_obj_t *dot_sec_trail2 = NULL;
@@ -37,7 +39,9 @@ static lv_obj_t *dot_sec_trail2 = NULL;
 static lv_obj_t *btn_goto_sw = NULL;
 static lv_obj_t *btn_goto_pom = NULL;
 
-#define CLOCK_DIAL_RADIUS 162
+#define CLOCK_DIAL_RADIUS 160
+#define CLOCK_HOUR_RADIUS 144
+
 
 // -------------------------------------------------------------
 // Stopwatch State & Objects
@@ -453,18 +457,7 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_style_border_width(cont_normal, 0, 0);
     lv_obj_clear_flag(cont_normal, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Whisper-thin outer guide ring (minimalist, zero glare)
-    lv_obj_t *outer_guide_ring = lv_arc_create(cont_normal);
-    lv_obj_set_size(outer_guide_ring, 332, 332);
-    lv_obj_align(outer_guide_ring, LV_ALIGN_CENTER, 0, 0);
-    lv_arc_set_angles(outer_guide_ring, 0, 360);
-    lv_arc_set_bg_angles(outer_guide_ring, 0, 360);
-    lv_obj_remove_style(outer_guide_ring, NULL, LV_PART_KNOB);
-    lv_obj_clear_flag(outer_guide_ring, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_arc_width(outer_guide_ring, 1, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(outer_guide_ring, lv_color_hex(0x151E28), LV_PART_MAIN);
-
-    // 12 Elegant Chronograph Hour Marks (Subtle dial markers)
+    // 12 Subtle Chronograph Hour Marks (Minimalist dial dots, zero glare)
     for (int i = 0; i < 12; i++) {
         float angle_rad = (i * 30.0f - 90.0f) * (M_PI / 180.0f);
         int x = (int)roundf(CLOCK_DIAL_RADIUS * cosf(angle_rad));
@@ -485,6 +478,26 @@ void page_clock_create(lv_obj_t *parent) {
         lv_obj_clear_flag(tick, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_align(tick, LV_ALIGN_CENTER, x, y);
     }
+
+    // Hour Symbol Indicator (Warm Amber/Gold Disc, Inner Track R = 144)
+    symbol_hour = lv_obj_create(cont_normal);
+    lv_obj_set_size(symbol_hour, 10, 10);
+    lv_obj_set_style_radius(symbol_hour, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(symbol_hour, lv_color_hex(0xFFA000), 0);
+    lv_obj_set_style_border_width(symbol_hour, 2, 0);
+    lv_obj_set_style_border_color(symbol_hour, lv_color_hex(0xFFD54F), 0);
+    lv_obj_clear_flag(symbol_hour, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(symbol_hour, LV_ALIGN_CENTER, 0, -CLOCK_HOUR_RADIUS);
+
+    // Minute Symbol Indicator (Crisp Mint Diamond, Outer Track R = 160)
+    symbol_minute = lv_obj_create(cont_normal);
+    lv_obj_set_size(symbol_minute, 8, 8);
+    lv_obj_set_style_radius(symbol_minute, 2, 0);
+    lv_obj_set_style_bg_color(symbol_minute, lv_color_hex(0x00E6A0), 0);
+    lv_obj_set_style_border_width(symbol_minute, 1, 0);
+    lv_obj_set_style_border_color(symbol_minute, lv_color_hex(0xB2F5EA), 0);
+    lv_obj_clear_flag(symbol_minute, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(symbol_minute, LV_ALIGN_CENTER, 0, -CLOCK_DIAL_RADIUS);
 
     // Soft 3-Dot Comet Tail for Seconds (Replaces bright full-circle arc)
     dot_sec_trail2 = lv_obj_create(cont_normal);
@@ -874,7 +887,25 @@ void page_clock_update_time(int hour, int minute, int second) {
     snprintf(buf, sizeof(buf), ":%02d", second);
     lv_label_set_text(lbl_sec, buf);
 
-    // Update 3-Dot Comet Tail for seconds (Chronograph perimeter)
+    // 1. Hour Symbol Indicator Position (Amber/Gold Disc, Inner Track R = 144)
+    if (symbol_hour) {
+        float hr_val = (float)(hour % 12) + (float)minute / 60.0f;
+        float angle_hr = (hr_val * 30.0f - 90.0f) * (M_PI / 180.0f);
+        int x_hr = (int)roundf(CLOCK_HOUR_RADIUS * cosf(angle_hr));
+        int y_hr = (int)roundf(CLOCK_HOUR_RADIUS * sinf(angle_hr));
+        lv_obj_align(symbol_hour, LV_ALIGN_CENTER, x_hr, y_hr);
+    }
+
+    // 2. Minute Symbol Indicator Position (Mint Diamond, Outer Track R = 160)
+    if (symbol_minute) {
+        float min_val = (float)minute + (float)second / 60.0f;
+        float angle_min = (min_val * 6.0f - 90.0f) * (M_PI / 180.0f);
+        int x_min = (int)roundf(CLOCK_DIAL_RADIUS * cosf(angle_min));
+        int y_min = (int)roundf(CLOCK_DIAL_RADIUS * sinf(angle_min));
+        lv_obj_align(symbol_minute, LV_ALIGN_CENTER, x_min, y_min);
+    }
+
+    // 3. Update 3-Dot Comet Tail for seconds (Outer Track R = 160)
     if (dot_sec_head && dot_sec_trail1 && dot_sec_trail2) {
         float angle_head = (second * 6.0f - 90.0f) * (M_PI / 180.0f);
         int x0 = (int)roundf(CLOCK_DIAL_RADIUS * cosf(angle_head));
