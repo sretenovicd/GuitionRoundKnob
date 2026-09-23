@@ -42,10 +42,14 @@ static void my_touch_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
         data->point.y = touchY;
 
         // Check horizontal swipe gestures for wrap-around page carousel
-        if (gesture == GESTURE_SLIDE_LEFT) {
-            ui_next_page();
-        } else if (gesture == GESTURE_SLIDE_RIGHT) {
-            ui_prev_page();
+        // Suppress carousel swipe when currently in a Clock submode (Stopwatch or Pomodoro)
+        bool in_submode = (current_page == PAGE_CLOCK && page_clock_is_in_submode());
+        if (!in_submode) {
+            if (gesture == GESTURE_SLIDE_LEFT) {
+                ui_next_page();
+            } else if (gesture == GESTURE_SLIDE_RIGHT) {
+                ui_prev_page();
+            }
         }
     } else {
         data->state = LV_INDEV_STATE_REL;
@@ -53,7 +57,10 @@ static void my_touch_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
 }
 
 static void on_knob_turn(int delta) {
-    if (current_page == PAGE_HARDWARE) {
+    if (current_page == PAGE_CLOCK && page_clock_is_in_pomodoro()) {
+        // Pomodoro Timer: knob turn adjusts time by 10s per detent (+10s CW / -10s CCW)
+        page_clock_pomodoro_adjust(delta);
+    } else if (current_page == PAGE_HARDWARE) {
         // While in HW page, turning knob increases/decreases background light of display in steps of 10%
         int current_bri = (int)display_get_backlight();
         int new_bri = current_bri + (delta * 10);

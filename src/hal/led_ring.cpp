@@ -12,6 +12,15 @@ static bool meeting_hand = false;
 static unsigned long volume_show_until = 0;
 static uint8_t current_volume = 50;
 
+static unsigned long stopwatch_flash_until = 0;
+static uint8_t stopwatch_r = 0, stopwatch_g = 255, stopwatch_b = 255;
+
+static unsigned long alarm_until = 0;
+
+static bool pomodoro_active = false;
+static uint8_t pomodoro_pct = 0;
+static uint8_t pom_r = 0, pom_g = 230, pom_b = 160;
+
 void led_ring_init() {
     strip.begin();
     strip.setBrightness(60); // 0-255 comfortable desk brightness
@@ -39,13 +48,57 @@ void led_ring_show_volume(uint8_t volume_pct) {
     volume_show_until = millis() + 2000; // Stay for 2 seconds
 }
 
+void led_ring_flash_stopwatch(uint8_t r, uint8_t g, uint8_t b, uint32_t duration_ms) {
+    stopwatch_r = r;
+    stopwatch_g = g;
+    stopwatch_b = b;
+    stopwatch_flash_until = millis() + duration_ms;
+}
+
+void led_ring_set_pomodoro_state(bool active, uint8_t pct, uint8_t r, uint8_t g, uint8_t b) {
+    pomodoro_active = active;
+    pomodoro_pct = pct;
+    pom_r = r;
+    pom_g = g;
+    pom_b = b;
+    if (active) {
+        current_mode = LED_MODE_POMODORO;
+    } else if (current_mode == LED_MODE_POMODORO) {
+        current_mode = LED_MODE_IDLE_BREATHING;
+    }
+}
+
+void led_ring_trigger_alarm(uint32_t duration_ms) {
+    alarm_until = millis() + duration_ms;
+}
+
 void led_ring_update() {
     static unsigned long last_update = 0;
     unsigned long now = millis();
     if (now - last_update < 20) return; // ~50 fps update
     last_update = now;
 
-    // Check volume gauge temporary override
+    // 1. Alarm override (Highest Priority): energetic pulsing when timer finishes
+    if (now < alarm_until) {
+        bool flash_phase = ((now / 150) % 2) == 0;
+        uint32_t col = flash_phase ? strip.Color(255, 0, 30) : strip.Color(255, 180, 0);
+        for (int i = 0; i < LED_RING_COUNT; i++) {
+            strip.setPixelColor(i, col);
+        }
+        strip.show();
+        return;
+    }
+
+    // 2. Stopwatch 10s flash override: all LEDs briefly flash a vibrant cycling color
+    if (now < stopwatch_flash_until) {
+        for (int i = 0; i < LED_RING_COUNT; i++) {
+            strip.setPixelColor(i, strip.Color(stopwatch_r, stopwatch_g, stopwatch_b));
+        }
+        strip.show();
+        return;
+    }
+
+    // 3. Volume gauge temporary override
     if (now < volume_show_until) {
         int active_leds = (int)((current_volume * LED_RING_COUNT) / 100);
         for (int i = 0; i < LED_RING_COUNT; i++) {
@@ -59,7 +112,7 @@ void led_ring_update() {
         return;
     }
 
-    // Meeting Status (Highest Priority)
+    // 4. Meeting Status
     if (meeting_active) {
         uint32_t col;
         if (meeting_hand) {
@@ -76,7 +129,26 @@ void led_ring_update() {
         return;
     }
 
-    // Music Accent Color
+    // 5. Pomodoro Progress Mode (Circular progress with gradient color)
+    if (current_mode == LED_MODE_POMODORO && pomodoro_active) {
+        int active_leds = (int)((pomodoro_pct * LED_RING_COUNT + 50) / 100);
+        if (pomodoro_pct > 0 && active_leds == 0) active_leds = 1;
+
+        uint32_t active_col = strip.Color(pom_r, pom_g, pom_b);
+        uint32_t dim_col = strip.Color(pom_r / 16, pom_g / 16, pom_b / 16);
+
+        for (int i = 0; i < LED_RING_COUNT; i++) {
+            if (i < active_leds) {
+                strip.setPixelColor(i, active_col);
+            } else {
+                strip.setPixelColor(i, dim_col);
+            }
+        }
+        strip.show();
+        return;
+    }
+
+    // 6. Music Accent Color
     if (current_mode == LED_MODE_MUSIC_ACCENT) {
         for (int i = 0; i < LED_RING_COUNT; i++) {
             strip.setPixelColor(i, strip.Color(accent_r, accent_g, accent_b));
@@ -85,7 +157,7 @@ void led_ring_update() {
         return;
     }
 
-    // Idle Breathing (Default)
+    // 7. Idle Breathing (Default)
     static float breath_angle = 0;
     breath_angle += 0.03f;
     if (breath_angle > 6.28318f) breath_angle -= 6.28318f;
@@ -99,3 +171,4 @@ void led_ring_update() {
     }
     strip.show();
 }
+
