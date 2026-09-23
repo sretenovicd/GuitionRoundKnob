@@ -4,6 +4,7 @@
 #include "hal/touch_cst816.h"
 #include "hal/knob_pulses.h"
 #include "hal/led_ring.h"
+#include "hal/audio_buzzer.h"
 #include "hal/usb_manager.h"
 #include "ui/ui_manager.h"
 #include "protocol/serial_protocol.h"
@@ -16,6 +17,7 @@ void setup() {
 
     // Initialize Hardware Peripherals
     led_ring_init();
+    audio_buzzer_init();
     knob_init();
     touch_init();
     display_init();
@@ -36,5 +38,6 @@ void loop() {
     ui_update();
     protocol_update();
     led_ring_update();
+    audio_buzzer_update();
     delay(5);
 }

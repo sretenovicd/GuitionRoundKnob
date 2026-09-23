@@ -1,6 +1,8 @@
 #include "page_clock.h"
 #include "../hal/led_ring.h"
+#include "../hal/audio_buzzer.h"
 #include "../config.h"
+#include <math.h>
 
 // -------------------------------------------------------------
 // Submode State
@@ -25,10 +27,17 @@ static lv_obj_t *cont_pomodoro = NULL;
 static lv_obj_t *lbl_time = NULL;
 static lv_obj_t *lbl_sec = NULL;
 static lv_obj_t *lbl_date = NULL;
-static lv_obj_t *arc_seconds = NULL;
 static lv_obj_t *lbl_badge = NULL;
+
+// Subtle Chronograph 60-Tick Ring & 3-Dot Comet Tail
+static lv_obj_t *dot_sec_head = NULL;
+static lv_obj_t *dot_sec_trail1 = NULL;
+static lv_obj_t *dot_sec_trail2 = NULL;
+
 static lv_obj_t *btn_goto_sw = NULL;
 static lv_obj_t *btn_goto_pom = NULL;
+
+#define CLOCK_DIAL_RADIUS 162
 
 // -------------------------------------------------------------
 // Stopwatch State & Objects
@@ -60,7 +69,7 @@ static const uint32_t SW_COLORS[] = {
 #define NUM_SW_COLORS (sizeof(SW_COLORS) / sizeof(SW_COLORS[0]))
 
 // -------------------------------------------------------------
-// Pomodoro State & Objects
+// Pomodoro State & Objects (Default 25 minutes)
 // -------------------------------------------------------------
 static lv_obj_t *arc_pomodoro = NULL;
 static lv_obj_t *lbl_pom_time = NULL;
@@ -74,8 +83,8 @@ static lv_obj_t *btn_pom_clear = NULL;
 static lv_obj_t *btn_pom_exit = NULL;
 
 static bool pom_running = false;
-static int pom_remaining_seconds = 0; // Starts at 0:00 as requested
-static int pom_total_seconds = 0;
+static int pom_remaining_seconds = 25 * 60; // Default 25:00
+static int pom_total_seconds = 25 * 60;
 static unsigned long pom_last_tick_ms = 0;
 static bool pom_completed_alarm = false;
 
@@ -215,8 +224,8 @@ static void update_pomodoro_ui() {
             lv_label_set_text(lbl_pom_status, "SET TIMER");
             lv_obj_set_style_text_color(lbl_pom_status, lv_color_hex(0x8A99AD), 0);
         } else {
-            lv_label_set_text(lbl_pom_status, "PAUSED");
-            lv_obj_set_style_text_color(lbl_pom_status, lv_color_hex(0xFFBE00), 0);
+            lv_label_set_text(lbl_pom_status, "READY");
+            lv_obj_set_style_text_color(lbl_pom_status, lv_color_hex(0x00E6A0), 0);
         }
         lv_label_set_text(lbl_pom_start_txt, "START");
         lv_obj_set_style_bg_color(btn_pom_start, lv_color_hex(0x00B060), 0);
@@ -293,7 +302,10 @@ static void clock_submode_timer_cb(lv_timer_t *timer) {
                 pom_remaining_seconds = 0;
                 pom_running = false;
                 pom_completed_alarm = true;
-                led_ring_trigger_alarm(4000); // 4s pulsing red/gold
+
+                // 5-second energetic LED alert & PCM5100A audio chime pulses
+                led_ring_trigger_alarm(5000);
+                audio_buzzer_trigger_alert(5000);
             }
 
             if (current_submode == SUBMODE_POMODORO) {
@@ -413,7 +425,7 @@ static void on_btn_click(lv_event_t *e) {
     if (target == btn_pom_clear) {
         pom_running = false;
         pom_completed_alarm = false;
-        pom_remaining_seconds = 0;
+        pom_remaining_seconds = 0; // Clears to 0:00 as requested
         pom_total_seconds = 0;
         update_pomodoro_ui();
         return;
@@ -441,38 +453,72 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_style_border_width(cont_normal, 0, 0);
     lv_obj_clear_flag(cont_normal, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Outer subtle circular border
-    lv_obj_t *outer_ring = lv_arc_create(cont_normal);
-    lv_obj_set_size(outer_ring, 340, 340);
-    lv_obj_align(outer_ring, LV_ALIGN_CENTER, 0, 0);
-    lv_arc_set_angles(outer_ring, 0, 360);
-    lv_arc_set_bg_angles(outer_ring, 0, 360);
-    lv_obj_remove_style(outer_ring, NULL, LV_PART_KNOB);
-    lv_obj_clear_flag(outer_ring, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_arc_width(outer_ring, 2, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(outer_ring, lv_color_hex(0x1F2A38), LV_PART_MAIN);
+    // Whisper-thin outer guide ring (minimalist, zero glare)
+    lv_obj_t *outer_guide_ring = lv_arc_create(cont_normal);
+    lv_obj_set_size(outer_guide_ring, 332, 332);
+    lv_obj_align(outer_guide_ring, LV_ALIGN_CENTER, 0, 0);
+    lv_arc_set_angles(outer_guide_ring, 0, 360);
+    lv_arc_set_bg_angles(outer_guide_ring, 0, 360);
+    lv_obj_remove_style(outer_guide_ring, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(outer_guide_ring, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_arc_width(outer_guide_ring, 1, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(outer_guide_ring, lv_color_hex(0x151E28), LV_PART_MAIN);
 
-    // Dynamic Second Arc
-    arc_seconds = lv_arc_create(cont_normal);
-    lv_obj_set_size(arc_seconds, 330, 330);
-    lv_obj_align(arc_seconds, LV_ALIGN_CENTER, 0, 0);
-    lv_arc_set_rotation(arc_seconds, 270);
-    lv_arc_set_bg_angles(arc_seconds, 0, 360);
-    lv_arc_set_range(arc_seconds, 0, 60);
-    lv_arc_set_value(arc_seconds, 0);
-    lv_obj_remove_style(arc_seconds, NULL, LV_PART_KNOB);
-    lv_obj_clear_flag(arc_seconds, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_arc_width(arc_seconds, 4, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(arc_seconds, lv_color_hex(0x151E28), LV_PART_MAIN);
-    lv_obj_set_style_arc_width(arc_seconds, 4, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(arc_seconds, lv_color_hex(0x00D2FF), LV_PART_INDICATOR);
+    // 12 Elegant Chronograph Hour Marks (Subtle dial markers)
+    for (int i = 0; i < 12; i++) {
+        float angle_rad = (i * 30.0f - 90.0f) * (M_PI / 180.0f);
+        int x = (int)roundf(CLOCK_DIAL_RADIUS * cosf(angle_rad));
+        int y = (int)roundf(CLOCK_DIAL_RADIUS * sinf(angle_rad));
+
+        lv_obj_t *tick = lv_obj_create(cont_normal);
+        bool is_cardinal = (i % 3 == 0); // 12, 3, 6, 9
+        if (is_cardinal) {
+            lv_obj_set_size(tick, 4, 4);
+            lv_obj_set_style_radius(tick, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(tick, lv_color_hex(0x425670), 0);
+        } else {
+            lv_obj_set_size(tick, 2, 2);
+            lv_obj_set_style_radius(tick, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(tick, lv_color_hex(0x223040), 0);
+        }
+        lv_obj_set_style_border_width(tick, 0, 0);
+        lv_obj_clear_flag(tick, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(tick, LV_ALIGN_CENTER, x, y);
+    }
+
+    // Soft 3-Dot Comet Tail for Seconds (Replaces bright full-circle arc)
+    dot_sec_trail2 = lv_obj_create(cont_normal);
+    lv_obj_set_size(dot_sec_trail2, 3, 3);
+    lv_obj_set_style_radius(dot_sec_trail2, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dot_sec_trail2, lv_color_hex(0x004055), 0);
+    lv_obj_set_style_border_width(dot_sec_trail2, 0, 0);
+    lv_obj_clear_flag(dot_sec_trail2, LV_OBJ_FLAG_CLICKABLE);
+
+    dot_sec_trail1 = lv_obj_create(cont_normal);
+    lv_obj_set_size(dot_sec_trail1, 5, 5);
+    lv_obj_set_style_radius(dot_sec_trail1, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dot_sec_trail1, lv_color_hex(0x0088AA), 0);
+    lv_obj_set_style_border_width(dot_sec_trail1, 0, 0);
+    lv_obj_clear_flag(dot_sec_trail1, LV_OBJ_FLAG_CLICKABLE);
+
+    dot_sec_head = lv_obj_create(cont_normal);
+    lv_obj_set_size(dot_sec_head, 7, 7);
+    lv_obj_set_style_radius(dot_sec_head, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dot_sec_head, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_border_width(dot_sec_head, 0, 0);
+    lv_obj_clear_flag(dot_sec_head, LV_OBJ_FLAG_CLICKABLE);
+
+    // Initial position at 12 o'clock
+    lv_obj_align(dot_sec_head, LV_ALIGN_CENTER, 0, -CLOCK_DIAL_RADIUS);
+    lv_obj_align(dot_sec_trail1, LV_ALIGN_CENTER, 0, -CLOCK_DIAL_RADIUS);
+    lv_obj_align(dot_sec_trail2, LV_ALIGN_CENTER, 0, -CLOCK_DIAL_RADIUS);
 
     // Large Digital Time Label (HH:MM)
     lbl_time = lv_label_create(cont_normal);
     lv_label_set_text(lbl_time, "12:00");
     lv_obj_set_style_text_font(lbl_time, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(lbl_time, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(lbl_time, LV_ALIGN_CENTER, 0, -40);
+    lv_obj_align(lbl_time, LV_ALIGN_CENTER, 0, -42);
 
     // Seconds Label (:SS)
     lbl_sec = lv_label_create(cont_normal);
@@ -495,37 +541,81 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_style_text_color(lbl_badge, lv_color_hex(0x00FFB0), 0);
     lv_obj_align(lbl_badge, LV_ALIGN_CENTER, 0, 48);
 
-    // Stopwatch Launch Button
+    // =========================================================
+    // Dedicated Circular Icon Buttons (Stopwatch & Pomodoro)
+    // =========================================================
+
+    // 1. Stopwatch Icon Button
     btn_goto_sw = lv_btn_create(cont_normal);
-    lv_obj_set_size(btn_goto_sw, 116, 38);
-    lv_obj_align(btn_goto_sw, LV_ALIGN_CENTER, -68, 92);
-    lv_obj_set_style_radius(btn_goto_sw, 19, 0);
-    lv_obj_set_style_bg_color(btn_goto_sw, lv_color_hex(0x1B2636), 0);
+    lv_obj_set_size(btn_goto_sw, 52, 52);
+    lv_obj_align(btn_goto_sw, LV_ALIGN_CENTER, -46, 88);
+    lv_obj_set_style_radius(btn_goto_sw, 26, 0);
+    lv_obj_set_style_bg_color(btn_goto_sw, lv_color_hex(0x16202E), 0);
     lv_obj_set_style_border_width(btn_goto_sw, 1, 0);
     lv_obj_set_style_border_color(btn_goto_sw, lv_color_hex(0x2D3E56), 0);
     lv_obj_add_event_cb(btn_goto_sw, on_btn_click, LV_EVENT_CLICKED, NULL);
 
-    lv_obj_t *lbl_btn_sw = lv_label_create(btn_goto_sw);
-    lv_label_set_text(lbl_btn_sw, "Stopwatch");
-    lv_obj_set_style_text_font(lbl_btn_sw, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(lbl_btn_sw, lv_color_hex(0x00D2FF), 0);
-    lv_obj_center(lbl_btn_sw);
+    // Vector Stopwatch Icon inside button
+    lv_obj_t *icon_sw_ring = lv_arc_create(btn_goto_sw);
+    lv_obj_set_size(icon_sw_ring, 22, 22);
+    lv_obj_align(icon_sw_ring, LV_ALIGN_CENTER, 0, 2);
+    lv_arc_set_angles(icon_sw_ring, 0, 360);
+    lv_arc_set_bg_angles(icon_sw_ring, 0, 360);
+    lv_obj_remove_style(icon_sw_ring, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(icon_sw_ring, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_arc_width(icon_sw_ring, 2, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(icon_sw_ring, lv_color_hex(0x00D2FF), LV_PART_MAIN);
 
-    // Pomodoro Launch Button
+    lv_obj_t *icon_sw_top = lv_obj_create(btn_goto_sw);
+    lv_obj_set_size(icon_sw_top, 6, 3);
+    lv_obj_align(icon_sw_top, LV_ALIGN_CENTER, 0, -11);
+    lv_obj_set_style_bg_color(icon_sw_top, lv_color_hex(0x00D2FF), 0);
+    lv_obj_set_style_border_width(icon_sw_top, 0, 0);
+    lv_obj_set_style_radius(icon_sw_top, 1, 0);
+    lv_obj_clear_flag(icon_sw_top, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *icon_sw_hand = lv_obj_create(btn_goto_sw);
+    lv_obj_set_size(icon_sw_hand, 2, 6);
+    lv_obj_align(icon_sw_hand, LV_ALIGN_CENTER, 2, 0);
+    lv_obj_set_style_bg_color(icon_sw_hand, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(icon_sw_hand, 0, 0);
+    lv_obj_set_style_radius(icon_sw_hand, 1, 0);
+    lv_obj_clear_flag(icon_sw_hand, LV_OBJ_FLAG_CLICKABLE);
+
+    // 2. Pomodoro Tomato Icon Button
     btn_goto_pom = lv_btn_create(cont_normal);
-    lv_obj_set_size(btn_goto_pom, 116, 38);
-    lv_obj_align(btn_goto_pom, LV_ALIGN_CENTER, 68, 92);
-    lv_obj_set_style_radius(btn_goto_pom, 19, 0);
-    lv_obj_set_style_bg_color(btn_goto_pom, lv_color_hex(0x1B2636), 0);
+    lv_obj_set_size(btn_goto_pom, 52, 52);
+    lv_obj_align(btn_goto_pom, LV_ALIGN_CENTER, 46, 88);
+    lv_obj_set_style_radius(btn_goto_pom, 26, 0);
+    lv_obj_set_style_bg_color(btn_goto_pom, lv_color_hex(0x16202E), 0);
     lv_obj_set_style_border_width(btn_goto_pom, 1, 0);
     lv_obj_set_style_border_color(btn_goto_pom, lv_color_hex(0x2D3E56), 0);
     lv_obj_add_event_cb(btn_goto_pom, on_btn_click, LV_EVENT_CLICKED, NULL);
 
-    lv_obj_t *lbl_btn_pom = lv_label_create(btn_goto_pom);
-    lv_label_set_text(lbl_btn_pom, "Pomodoro");
-    lv_obj_set_style_text_font(lbl_btn_pom, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(lbl_btn_pom, lv_color_hex(0xFF6B4A), 0);
-    lv_obj_center(lbl_btn_pom);
+    // Vector Tomato Icon inside button
+    lv_obj_t *icon_pom_body = lv_obj_create(btn_goto_pom);
+    lv_obj_set_size(icon_pom_body, 22, 19);
+    lv_obj_align(icon_pom_body, LV_ALIGN_CENTER, 0, 2);
+    lv_obj_set_style_bg_color(icon_pom_body, lv_color_hex(0xFF5252), 0);
+    lv_obj_set_style_border_width(icon_pom_body, 0, 0);
+    lv_obj_set_style_radius(icon_pom_body, 9, 0);
+    lv_obj_clear_flag(icon_pom_body, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *icon_pom_stem = lv_obj_create(btn_goto_pom);
+    lv_obj_set_size(icon_pom_stem, 8, 4);
+    lv_obj_align(icon_pom_stem, LV_ALIGN_CENTER, 0, -8);
+    lv_obj_set_style_bg_color(icon_pom_stem, lv_color_hex(0x4CAF50), 0);
+    lv_obj_set_style_border_width(icon_pom_stem, 0, 0);
+    lv_obj_set_style_radius(icon_pom_stem, 2, 0);
+    lv_obj_clear_flag(icon_pom_stem, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *icon_pom_shine = lv_obj_create(btn_goto_pom);
+    lv_obj_set_size(icon_pom_shine, 3, 3);
+    lv_obj_align(icon_pom_shine, LV_ALIGN_CENTER, -4, 0);
+    lv_obj_set_style_bg_color(icon_pom_shine, lv_color_hex(0xFF8A80), 0);
+    lv_obj_set_style_border_width(icon_pom_shine, 0, 0);
+    lv_obj_set_style_radius(icon_pom_shine, LV_RADIUS_CIRCLE, 0);
+    lv_obj_clear_flag(icon_pom_shine, LV_OBJ_FLAG_CLICKABLE);
 
 
     // =========================================================
@@ -643,7 +733,7 @@ void page_clock_create(lv_obj_t *parent) {
     lv_arc_set_rotation(arc_pomodoro, 270); // 12 o'clock start
     lv_arc_set_bg_angles(arc_pomodoro, 0, 360);
     lv_arc_set_range(arc_pomodoro, 0, 1000);
-    lv_arc_set_value(arc_pomodoro, 0);
+    lv_arc_set_value(arc_pomodoro, 1000); // Default full circle
     lv_obj_remove_style(arc_pomodoro, NULL, LV_PART_KNOB);
     lv_obj_clear_flag(arc_pomodoro, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_arc_width(arc_pomodoro, 6, LV_PART_MAIN);
@@ -659,18 +749,18 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_style_text_color(lbl_pom_title, lv_color_hex(0xFF6B4A), 0);
     lv_obj_align(lbl_pom_title, LV_ALIGN_CENTER, 0, -118);
 
-    // Large Digital Countdown (MM:SS)
+    // Large Digital Countdown (MM:SS) - default 25:00
     lbl_pom_time = lv_label_create(cont_pomodoro);
-    lv_label_set_text(lbl_pom_time, "00:00");
+    lv_label_set_text(lbl_pom_time, "25:00");
     lv_obj_set_style_text_font(lbl_pom_time, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(lbl_pom_time, lv_color_hex(0xFFFFFF), 0);
     lv_obj_align(lbl_pom_time, LV_ALIGN_CENTER, 0, -60);
 
     // Status / Mode feedback
     lbl_pom_status = lv_label_create(cont_pomodoro);
-    lv_label_set_text(lbl_pom_status, "SET TIMER");
+    lv_label_set_text(lbl_pom_status, "READY (25m)");
     lv_obj_set_style_text_font(lbl_pom_status, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(lbl_pom_status, lv_color_hex(0x8A99AD), 0);
+    lv_obj_set_style_text_color(lbl_pom_status, lv_color_hex(0x00E6A0), 0);
     lv_obj_align(lbl_pom_status, LV_ALIGN_CENTER, 0, -15);
 
     // Quick-add buttons: +1, +5, +10
@@ -733,7 +823,7 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_style_text_color(lbl_pom_start_txt, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(lbl_pom_start_txt);
 
-    // Clear Button
+    // Clear Button (Resets to 00:00)
     btn_pom_clear = lv_btn_create(cont_pomodoro);
     lv_obj_set_size(btn_pom_clear, 106, 38);
     lv_obj_align(btn_pom_clear, LV_ALIGN_CENTER, 62, 70);
@@ -775,7 +865,7 @@ void page_clock_create(lv_obj_t *parent) {
 }
 
 void page_clock_update_time(int hour, int minute, int second) {
-    if (!lbl_time || !lbl_sec || !arc_seconds) return;
+    if (!lbl_time || !lbl_sec) return;
 
     char buf[16];
     snprintf(buf, sizeof(buf), "%02d:%02d", hour, minute);
@@ -784,7 +874,26 @@ void page_clock_update_time(int hour, int minute, int second) {
     snprintf(buf, sizeof(buf), ":%02d", second);
     lv_label_set_text(lbl_sec, buf);
 
-    lv_arc_set_value(arc_seconds, second);
+    // Update 3-Dot Comet Tail for seconds (Chronograph perimeter)
+    if (dot_sec_head && dot_sec_trail1 && dot_sec_trail2) {
+        float angle_head = (second * 6.0f - 90.0f) * (M_PI / 180.0f);
+        int x0 = (int)roundf(CLOCK_DIAL_RADIUS * cosf(angle_head));
+        int y0 = (int)roundf(CLOCK_DIAL_RADIUS * sinf(angle_head));
+
+        int prev1 = (second + 59) % 60;
+        float angle_t1 = (prev1 * 6.0f - 90.0f) * (M_PI / 180.0f);
+        int x1 = (int)roundf(CLOCK_DIAL_RADIUS * cosf(angle_t1));
+        int y1 = (int)roundf(CLOCK_DIAL_RADIUS * sinf(angle_t1));
+
+        int prev2 = (second + 58) % 60;
+        float angle_t2 = (prev2 * 6.0f - 90.0f) * (M_PI / 180.0f);
+        int x2 = (int)roundf(CLOCK_DIAL_RADIUS * cosf(angle_t2));
+        int y2 = (int)roundf(CLOCK_DIAL_RADIUS * sinf(angle_t2));
+
+        lv_obj_align(dot_sec_head, LV_ALIGN_CENTER, x0, y0);
+        lv_obj_align(dot_sec_trail1, LV_ALIGN_CENTER, x1, y1);
+        lv_obj_align(dot_sec_trail2, LV_ALIGN_CENTER, x2, y2);
+    }
 }
 
 void page_clock_update_date(const char *date_str, const char *day_str) {
