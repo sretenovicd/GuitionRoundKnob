@@ -65,7 +65,7 @@ static void on_knob_turn(int delta) {
         int current_bri = (int)display_get_backlight();
         int new_bri = current_bri + (delta * 10);
         if (new_bri > 100) new_bri = 100;
-        if (new_bri < 10) new_bri = 10; // Minimum 10% ensures screen remains legible
+        if (new_bri < 0) new_bri = 0; // Can be reduced to 0% as requested
 
         display_set_backlight((uint8_t)new_bri);
         page_hardware_set_brightness((uint8_t)new_bri);

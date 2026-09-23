@@ -240,10 +240,10 @@ void display_init() {
 
     // 5. Backlight PWM Setup
     ledcAttach(PIN_LCD_BLK, 5000, 8); // Pin, 5kHz, 8-bit resolution
-    display_set_backlight(80); // Default to 80% brightness
+    display_set_backlight(20); // Default to 20% brightness
 }
 
-static uint8_t current_brightness = 80;
+static uint8_t current_brightness = 20;
 
 void display_set_backlight(uint8_t brightness_pct) {
     if (brightness_pct > 100) brightness_pct = 100;
