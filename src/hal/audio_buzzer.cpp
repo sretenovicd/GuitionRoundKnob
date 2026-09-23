@@ -49,6 +49,12 @@ void audio_buzzer_init() {
     Serial.println("[AUDIO] PCM5100A I2S DAC initialized successfully");
 }
 
+static uint8_t buzzer_vol_pct = 15; // Soft and gentle by default (~15% volume)
+
+void audio_buzzer_set_volume(uint8_t vol_pct) {
+    buzzer_vol_pct = (vol_pct > 100) ? 100 : vol_pct;
+}
+
 void audio_buzzer_trigger_alert(uint32_t duration_ms) {
     if (!tx_chan) return;
     alert_end_time = millis() + duration_ms;
@@ -66,11 +72,19 @@ void audio_buzzer_update() {
         return;
     }
 
-    // Pleasant rhythmic chime: 200ms tone + 150ms pause
+    // Soft, pleasant rhythmic chime: 200ms tone + 180ms pause
     // Alternates between 880Hz (A5) and 1320Hz (E6)
-    unsigned long pattern_pos = (now % 700);
-    bool sound_on = (pattern_pos < 200) || (pattern_pos >= 350 && pattern_pos < 550);
+    unsigned long pattern_pos = (now % 760);
+    bool sound_on = (pattern_pos < 200) || (pattern_pos >= 380 && pattern_pos < 580);
     float freq = (pattern_pos < 200) ? 880.0f : 1320.0f;
+    float pulse_progress = (pattern_pos < 200) ? ((float)pattern_pos / 200.0f) : ((float)(pattern_pos - 380) / 200.0f);
+
+    // Bell envelope: gentle 20ms fade-in (no clicks) and natural acoustic decay
+    float env = 1.0f - pulse_progress * 0.70f;
+    if (pulse_progress < 0.10f) env = pulse_progress * 10.0f;
+
+    // Scale amplitude: at 15% volume -> max amplitude ~1200 (out of 32767)
+    float max_amp = (float)(buzzer_vol_pct * 80) * env;
 
     int16_t buffer[CHUNK_SAMPLES * 2]; // Stereo L + R
     float phase_inc = (2.0f * M_PI * freq) / (float)SAMPLE_RATE;
@@ -79,7 +93,7 @@ void audio_buzzer_update() {
         for (int i = 0; i < CHUNK_SAMPLES; i++) {
             phase += phase_inc;
             if (phase > 2.0f * M_PI) phase -= 2.0f * M_PI;
-            int16_t sample = (int16_t)(sinf(phase) * 8000.0f); // Pleasant audible volume
+            int16_t sample = (int16_t)(sinf(phase) * max_amp);
             buffer[i * 2] = sample;     // Left
             buffer[i * 2 + 1] = sample; // Right
         }
@@ -90,3 +104,4 @@ void audio_buzzer_update() {
     size_t bytes_written = 0;
     i2s_channel_write(tx_chan, buffer, sizeof(buffer), &bytes_written, 10);
 }
+
