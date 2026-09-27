@@ -1,0 +1,40 @@
+{
+  "shortcuts": {
+    "1": {
+      "name": "Terminal",
+      "target": "wt.exe",
+      "args": [],
+      "description": "Windows Terminal (or PowerShell)"
+    },
+    "2": {
+      "name": "VS Code",
+      "target": "code",
+      "args": [],
+      "description": "Visual Studio Code"
+    },
+    "3": {
+      "name": "Browser",
+      "target": "https://www.google.com",
+      "args": [],
+      "description": "Default Web Browser"
+    },
+    "4": {
+      "name": "Calculator",
+      "target": "calc.exe",
+      "args": [],
+      "description": "Windows Calculator"
+    },
+    "5": {
+      "name": "Notepad",
+      "target": "notepad.exe",
+      "args": [],
+      "description": "Windows Notepad"
+    },
+    "6": {
+      "name": "Explorer",
+      "target": "explorer.exe",
+      "args": [],
+      "description": "Windows File Explorer"
+    }
+  }
+}

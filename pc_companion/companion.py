@@ -237,6 +237,73 @@ class MediaWatcher:
             }
 
 
+def load_shortcuts_config() -> dict:
+    """Load shortcuts mapping from shortcuts_config.json with safe fallback defaults."""
+    cfg_path = os.path.join(os.path.dirname(__file__), "shortcuts_config.json")
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                return json.load(f).get("shortcuts", {})
+        except Exception as e:
+            print(f"[Shortcuts] Warning loading config: {e}")
+    return {
+        "1": {"name": "Terminal", "target": "wt.exe"},
+        "2": {"name": "VS Code", "target": "code"},
+        "3": {"name": "Browser", "target": "https://www.google.com"},
+        "4": {"name": "Calculator", "target": "calc.exe"},
+        "5": {"name": "Notepad", "target": "notepad.exe"},
+        "6": {"name": "Explorer", "target": "explorer.exe"},
+    }
+
+
+def launch_shortcut(shortcut_num: int):
+    """Launch the configured executable, script, or web link for the given shortcut number (1-6)."""
+    shortcuts = load_shortcuts_config()
+    item = shortcuts.get(str(shortcut_num))
+    if not item:
+        print(f"[Shortcut] No configuration found for Shortcut #{shortcut_num}")
+        return
+
+    name = item.get("name", f"Shortcut {shortcut_num}")
+    target = item.get("target", "").strip()
+    args = item.get("args", [])
+    print(f"\n[Shortcut] >>> TRIGGERED SHORTCUT #{shortcut_num}: '{name}' -> '{target}' <<<")
+
+    if not target:
+        print(f"[Shortcut] Target path/command is empty for #{shortcut_num}")
+        return
+
+    try:
+        import subprocess
+        import webbrowser
+
+        target_lower = target.lower()
+        if target_lower.startswith(("http://", "https://")):
+            webbrowser.open(target)
+            print(f"[Shortcut] Successfully opened URL in default browser: {target}")
+        elif target_lower.endswith(".py"):
+            subprocess.Popen([sys.executable, target] + args)
+            print(f"[Shortcut] Successfully launched Python script: {target}")
+        elif target_lower.endswith(".ps1"):
+            subprocess.Popen(["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", target] + args)
+            print(f"[Shortcut] Successfully launched PowerShell script: {target}")
+        elif target_lower.endswith((".bat", ".cmd")):
+            subprocess.Popen([target] + args, shell=True)
+            print(f"[Shortcut] Successfully launched batch script: {target}")
+        else:
+            if sys.platform == "win32" and not args:
+                try:
+                    os.startfile(target)
+                    print(f"[Shortcut] Successfully launched via Windows Shell: {target}")
+                    return
+                except Exception:
+                    pass
+            subprocess.Popen([target] + args)
+            print(f"[Shortcut] Successfully launched process: {target}")
+    except Exception as e:
+        print(f"[Shortcut] Error launching '{target}': {e}")
+
+
 async def async_main():
     print("=" * 65)
     print(" Guition JC3636K718C PC Companion Service - Stage 2")
@@ -270,6 +337,12 @@ async def async_main():
         return
 
     print(f"[+] Connected to {port}! Press Ctrl+C to exit.\n")
+
+    # Send configured shortcut names to device so labels display dynamically on the round screen
+    shortcuts_cfg = load_shortcuts_config()
+    shortcut_names = [shortcuts_cfg.get(str(i), {}).get("name", f"App {i}") for i in range(1, 7)]
+    ser.write((json.dumps({"type": "shortcuts_names", "names": shortcut_names}) + "\n").encode("utf-8"))
+    print(f"[Shortcuts] Synchronized shortcut labels with device: {shortcut_names}")
 
     media_watcher = MediaWatcher()
     await media_watcher.init_manager()
@@ -342,18 +415,22 @@ async def async_main():
                 line = ser.readline().decode("utf-8", errors="ignore").strip()
                 if line:
                     print(f"[Device]: {line}")
-                    if line.startswith("{") and "teams_toggle" in line:
+                    if line.startswith("{"):
                         try:
                             cmd_data = json.loads(line)
                             cmd = cmd_data.get("cmd")
-                            if cmd == "teams_toggle_mute":
+                            if cmd == "shortcut":
+                                num = cmd_data.get("num")
+                                if num is not None:
+                                    launch_shortcut(int(num))
+                            elif cmd == "teams_toggle_mute":
                                 await teams_client.toggle_mute()
                                 ser.write((json.dumps(teams_client.get_packet()) + "\n").encode("utf-8"))
                             elif cmd == "teams_toggle_hand":
                                 await teams_client.toggle_hand()
                                 ser.write((json.dumps(teams_client.get_packet()) + "\n").encode("utf-8"))
                         except Exception as e:
-                            print(f"[Teams] Error handling command: {e}")
+                            print(f"[Device] Error handling command: {e}")
 
             await asyncio.sleep(0.5)
 

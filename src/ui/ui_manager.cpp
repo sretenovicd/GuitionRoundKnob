@@ -9,14 +9,16 @@
 #include "page_media.h"
 #include "page_hardware.h"
 #include "page_teams.h"
+#include "page_shortcuts.h"
 
-#define NUM_PAGES 4
+#define NUM_PAGES 5
 
 enum PageIndex {
     PAGE_CLOCK = 0,
     PAGE_MEDIA = 1,
     PAGE_HARDWARE = 2,
-    PAGE_TEAMS = 3
+    PAGE_TEAMS = 3,
+    PAGE_SHORTCUTS = 4
 };
 
 static lv_disp_draw_buf_t draw_buf;
@@ -71,6 +73,9 @@ static void on_knob_turn(int delta) {
         page_hardware_set_brightness((uint8_t)new_bri);
         led_ring_show_volume((uint8_t)new_bri); // Visual feedback on LED ring
         Serial.printf("[HW] Display Backlight: %d%%\n", new_bri);
+    } else if (current_page == PAGE_SHORTCUTS) {
+        // Shortcuts page: knob rotation shifts active shortcut along circle segment
+        page_shortcuts_on_knob(delta);
     } else {
         // Default behavior: Media Volume Control
         if (delta > 0) {
@@ -131,6 +136,7 @@ void ui_init() {
     page_media_create(pages[1]);
     page_hardware_create(pages[2]);
     page_teams_create(pages[3]);
+    page_shortcuts_create(pages[4]);
 
     page_hardware_set_brightness(display_get_backlight());
 
@@ -143,6 +149,10 @@ void ui_init() {
 
 void ui_set_page(int page_index) {
     if (page_index < 0 || page_index >= NUM_PAGES) return;
+
+    if (current_page == PAGE_SHORTCUTS && page_index != PAGE_SHORTCUTS) {
+        page_shortcuts_reset();
+    }
 
     for (int i = 0; i < NUM_PAGES; i++) {
         if (i == page_index) {
@@ -169,5 +179,8 @@ int ui_get_current_page() {
 }
 
 void ui_update() {
+    if (current_page == PAGE_SHORTCUTS) {
+        page_shortcuts_update();
+    }
     lv_timer_handler();
 }

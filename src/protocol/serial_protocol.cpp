@@ -4,6 +4,7 @@
 #include "../ui/page_media.h"
 #include "../ui/page_hardware.h"
 #include "../ui/page_teams.h"
+#include "../ui/page_shortcuts.h"
 #include "../ui/ui_manager.h"
 #include "../hal/led_ring.h"
 #include "../hal/knob_pulses.h"
@@ -28,7 +29,7 @@ static void handle_command(const String &cmd) {
         Serial.println(" knob opplockout <ms>     : Set opposite-pin lockout (default 150ms)");
         Serial.println(" knob stats               : Show knob pulse & rejection counters");
         Serial.println(" knob reset               : Reset knob stats & position counters");
-        Serial.println(" page <0-3>               : Switch UI page (0:Clock 1:Media 2:HW 3:Teams)");
+        Serial.println(" page <0-4>               : Switch UI page (0:Clock 1:Media 2:HW 3:Teams 4:Shortcuts)");
         Serial.println(" backlight <0-100>        : Set display backlight brightness percentage");
         Serial.println(" vol up / vol down        : Simulate volume HID keystrokes");
         Serial.println(" restart                  : Reboot ESP32");
@@ -38,9 +39,9 @@ static void handle_command(const String &cmd) {
         Serial.printf(" Free Heap:  %u KB (Total: %u KB, Min Free: %u KB)\n",
                       ESP.getFreeHeap() / 1024, ESP.getHeapSize() / 1024, ESP.getMinFreeHeap() / 1024);
         Serial.printf(" Free PSRAM: %u KB (Total: %u KB)\n",
-                      ESP.getFreePsram() / 1024, ESP.getPsramSize() / 1024);
+                       ESP.getFreePsram() / 1024, ESP.getPsramSize() / 1024);
         Serial.printf(" Uptime:     %lu seconds\n", (unsigned long)(millis() / 1000));
-        Serial.printf(" UI Page:    %d / 3\n", ui_get_current_page());
+        Serial.printf(" UI Page:    %d / 4\n", ui_get_current_page());
         Serial.printf(" Backlight:  %d%%\n", display_get_backlight());
         knob_print_status();
         Serial.println("=====================================================\n");
@@ -70,11 +71,11 @@ static void handle_command(const String &cmd) {
         knob_reset_stats();
     } else if (c.startsWith("page ")) {
         int p = c.substring(5).toInt();
-        if (p >= 0 && p < 4) {
+        if (p >= 0 && p < 5) {
             ui_set_page(p);
             Serial.printf("[CMD] Switched to UI page %d\n", p);
         } else {
-            Serial.println("[CMD] Valid pages: 0=Clock, 1=Media, 2=Hardware, 3=Teams");
+            Serial.println("[CMD] Valid pages: 0=Clock, 1=Media, 2=Hardware, 3=Teams, 4=Shortcuts");
         }
     } else if (c.startsWith("backlight ") || c.startsWith("bri ")) {
         int b = c.substring(c.indexOf(' ') + 1).toInt();
@@ -155,6 +156,14 @@ void protocol_update() {
                                 bool locked = doc["locked"] | false;
                                 if (locked) {
                                     ui_set_page(0); // Jump to Clock/Screensaver on PC lock
+                                }
+                            } else if (strcmp(type, "shortcuts_names") == 0) {
+                                JsonArray names = doc["names"];
+                                if (!names.isNull()) {
+                                    for (size_t i = 0; i < names.size() && i < 6; i++) {
+                                        const char *n = names[i] | "";
+                                        page_shortcuts_set_name((int)i, n);
+                                    }
                                 }
                             }
                         }
