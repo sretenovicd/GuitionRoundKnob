@@ -445,7 +445,7 @@ static void on_btn_click(lv_event_t *e) {
 // -------------------------------------------------------------
 void page_clock_create(lv_obj_t *parent) {
     clock_page = parent;
-    lv_obj_set_style_bg_color(clock_page, lv_color_hex(0x0A0E17), 0);
+    lv_obj_set_style_bg_color(clock_page, lv_color_hex(0x06080D), 0);
 
     // =========================================================
     // 1. NORMAL CLOCK VIEW CONTAINER
@@ -457,26 +457,37 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_style_border_width(cont_normal, 0, 0);
     lv_obj_clear_flag(cont_normal, LV_OBJ_FLAG_SCROLLABLE);
 
-    // 12 Subtle Chronograph Hour Marks (Minimalist dial dots, zero glare)
-    for (int i = 0; i < 12; i++) {
-        float angle_rad = (i * 30.0f - 90.0f) * (M_PI / 180.0f);
-        int x = (int)roundf(CLOCK_DIAL_RADIUS * cosf(angle_rad));
-        int y = (int)roundf(CLOCK_DIAL_RADIUS * sinf(angle_rad));
+    // Base Dial Disc (344x344, Pure Obsidian #0D111A, border 1px #1E2638)
+    lv_obj_t *dial_disc = lv_obj_create(cont_normal);
+    lv_obj_set_size(dial_disc, 344, 344);
+    lv_obj_align(dial_disc, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(dial_disc, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dial_disc, lv_color_hex(0x0D111A), 0);
+    lv_obj_set_style_border_width(dial_disc, 1, 0);
+    lv_obj_set_style_border_color(dial_disc, lv_color_hex(0x1E2638), 0);
+    lv_obj_clear_flag(dial_disc, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
-        lv_obj_t *tick = lv_obj_create(cont_normal);
-        bool is_cardinal = (i % 3 == 0); // 12, 3, 6, 9
-        if (is_cardinal) {
-            lv_obj_set_size(tick, 4, 4);
+    // 24 Perimeter Chronometer Ticks
+    for (int i = 0; i < 24; i++) {
+        float angle_deg = i * 15.0f;
+        float rad = (angle_deg - 90.0f) * (M_PI / 180.0f);
+        int tx = (int)roundf(162.0f * cosf(rad));
+        int ty = (int)roundf(162.0f * sinf(rad));
+
+        lv_obj_t *tick = lv_obj_create(dial_disc);
+        bool is_major = (i % 4 == 0); // every 60 deg
+        if (is_major) {
+            lv_obj_set_size(tick, 3, 3);
             lv_obj_set_style_radius(tick, LV_RADIUS_CIRCLE, 0);
-            lv_obj_set_style_bg_color(tick, lv_color_hex(0x425670), 0);
+            lv_obj_set_style_bg_color(tick, lv_color_hex(0x475569), 0);
         } else {
             lv_obj_set_size(tick, 2, 2);
             lv_obj_set_style_radius(tick, LV_RADIUS_CIRCLE, 0);
-            lv_obj_set_style_bg_color(tick, lv_color_hex(0x223040), 0);
+            lv_obj_set_style_bg_color(tick, lv_color_hex(0x1E293B), 0);
         }
         lv_obj_set_style_border_width(tick, 0, 0);
         lv_obj_clear_flag(tick, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_align(tick, LV_ALIGN_CENTER, x, y);
+        lv_obj_align(tick, LV_ALIGN_CENTER, tx, ty);
     }
 
     // Hour Symbol Indicator (Warm Amber/Gold Disc, Inner Track R = 144)
@@ -499,7 +510,7 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_clear_flag(symbol_minute, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_align(symbol_minute, LV_ALIGN_CENTER, 0, -CLOCK_DIAL_RADIUS);
 
-    // Soft 3-Dot Comet Tail for Seconds (Replaces bright full-circle arc)
+    // Soft 3-Dot Comet Tail for Seconds (Outer Track R = 160)
     dot_sec_trail2 = lv_obj_create(cont_normal);
     lv_obj_set_size(dot_sec_trail2, 3, 3);
     lv_obj_set_style_radius(dot_sec_trail2, LV_RADIUS_CIRCLE, 0);
@@ -531,21 +542,32 @@ void page_clock_create(lv_obj_t *parent) {
     lv_label_set_text(lbl_time, "12:00");
     lv_obj_set_style_text_font(lbl_time, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(lbl_time, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(lbl_time, LV_ALIGN_CENTER, 0, -42);
+    lv_obj_align(lbl_time, LV_ALIGN_CENTER, -12, -42);
 
     // Seconds Label (:SS)
     lbl_sec = lv_label_create(cont_normal);
     lv_label_set_text(lbl_sec, ":00");
     lv_obj_set_style_text_font(lbl_sec, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(lbl_sec, lv_color_hex(0x00D2FF), 0);
-    lv_obj_align_to(lbl_sec, lbl_time, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, -8);
+    lv_obj_align_to(lbl_sec, lbl_time, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -8);
 
-    // Date Label
-    lbl_date = lv_label_create(cont_normal);
+    // Precision Date Capsule Pill (#121824, border 1px #232E42)
+    lv_obj_t *date_pill = lv_obj_create(cont_normal);
+    lv_obj_set_size(date_pill, LV_SIZE_CONTENT, 28);
+    lv_obj_align(date_pill, LV_ALIGN_CENTER, 0, 16);
+    lv_obj_set_style_radius(date_pill, 14, 0);
+    lv_obj_set_style_bg_color(date_pill, lv_color_hex(0x121824), 0);
+    lv_obj_set_style_border_width(date_pill, 1, 0);
+    lv_obj_set_style_border_color(date_pill, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_pad_hor(date_pill, 14, 0);
+    lv_obj_set_style_pad_ver(date_pill, 3, 0);
+    lv_obj_clear_flag(date_pill, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lbl_date = lv_label_create(date_pill);
     lv_label_set_text(lbl_date, "Waiting for PC link...");
-    lv_obj_set_style_text_font(lbl_date, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_date, lv_color_hex(0x8A99AD), 0);
-    lv_obj_align(lbl_date, LV_ALIGN_CENTER, 0, 15);
+    lv_obj_set_style_text_font(lbl_date, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(lbl_date, lv_color_hex(0x94A3B8), 0);
+    lv_obj_center(lbl_date);
 
     // Background running badge (displays when Stopwatch or Pomodoro running)
     lbl_badge = lv_label_create(cont_normal);
@@ -563,9 +585,10 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_size(btn_goto_sw, 52, 52);
     lv_obj_align(btn_goto_sw, LV_ALIGN_CENTER, -46, 88);
     lv_obj_set_style_radius(btn_goto_sw, 26, 0);
-    lv_obj_set_style_bg_color(btn_goto_sw, lv_color_hex(0x16202E), 0);
+    lv_obj_set_style_bg_color(btn_goto_sw, lv_color_hex(0x121824), 0);
     lv_obj_set_style_border_width(btn_goto_sw, 1, 0);
-    lv_obj_set_style_border_color(btn_goto_sw, lv_color_hex(0x2D3E56), 0);
+    lv_obj_set_style_border_color(btn_goto_sw, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_shadow_width(btn_goto_sw, 0, 0);
     lv_obj_add_event_cb(btn_goto_sw, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     // Vector Stopwatch Icon inside button
@@ -600,9 +623,10 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_size(btn_goto_pom, 52, 52);
     lv_obj_align(btn_goto_pom, LV_ALIGN_CENTER, 46, 88);
     lv_obj_set_style_radius(btn_goto_pom, 26, 0);
-    lv_obj_set_style_bg_color(btn_goto_pom, lv_color_hex(0x16202E), 0);
+    lv_obj_set_style_bg_color(btn_goto_pom, lv_color_hex(0x121824), 0);
     lv_obj_set_style_border_width(btn_goto_pom, 1, 0);
-    lv_obj_set_style_border_color(btn_goto_pom, lv_color_hex(0x2D3E56), 0);
+    lv_obj_set_style_border_color(btn_goto_pom, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_shadow_width(btn_goto_pom, 0, 0);
     lv_obj_add_event_cb(btn_goto_pom, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     // Vector Tomato Icon inside button
@@ -642,23 +666,33 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_clear_flag(cont_stopwatch, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(cont_stopwatch, LV_OBJ_FLAG_HIDDEN);
 
-    // Decorative ring
-    lv_obj_t *sw_ring = lv_arc_create(cont_stopwatch);
-    lv_obj_set_size(sw_ring, 336, 336);
-    lv_obj_align(sw_ring, LV_ALIGN_CENTER, 0, 0);
-    lv_arc_set_angles(sw_ring, 0, 360);
-    lv_arc_set_bg_angles(sw_ring, 0, 360);
-    lv_obj_remove_style(sw_ring, NULL, LV_PART_KNOB);
-    lv_obj_clear_flag(sw_ring, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_arc_width(sw_ring, 2, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(sw_ring, lv_color_hex(0x1F2A38), LV_PART_MAIN);
+    // Decorative Stopwatch Bezel
+    lv_obj_t *sw_dial_disc = lv_obj_create(cont_stopwatch);
+    lv_obj_set_size(sw_dial_disc, 344, 344);
+    lv_obj_align(sw_dial_disc, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(sw_dial_disc, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(sw_dial_disc, lv_color_hex(0x0D111A), 0);
+    lv_obj_set_style_border_width(sw_dial_disc, 1, 0);
+    lv_obj_set_style_border_color(sw_dial_disc, lv_color_hex(0x1E2638), 0);
+    lv_obj_clear_flag(sw_dial_disc, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
-    // Title
-    lv_obj_t *lbl_sw_title = lv_label_create(cont_stopwatch);
+    // Title Pill
+    lv_obj_t *sw_title_pill = lv_obj_create(cont_stopwatch);
+    lv_obj_set_size(sw_title_pill, LV_SIZE_CONTENT, 24);
+    lv_obj_align(sw_title_pill, LV_ALIGN_CENTER, 0, -115);
+    lv_obj_set_style_radius(sw_title_pill, 12, 0);
+    lv_obj_set_style_bg_color(sw_title_pill, lv_color_hex(0x121824), 0);
+    lv_obj_set_style_border_width(sw_title_pill, 1, 0);
+    lv_obj_set_style_border_color(sw_title_pill, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_pad_hor(sw_title_pill, 12, 0);
+    lv_obj_set_style_pad_ver(sw_title_pill, 2, 0);
+    lv_obj_clear_flag(sw_title_pill, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *lbl_sw_title = lv_label_create(sw_title_pill);
     lv_label_set_text(lbl_sw_title, "STOPWATCH");
-    lv_obj_set_style_text_font(lbl_sw_title, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(lbl_sw_title, lv_color_hex(0x00D2FF), 0);
-    lv_obj_align(lbl_sw_title, LV_ALIGN_CENTER, 0, -115);
+    lv_obj_set_style_text_font(lbl_sw_title, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(lbl_sw_title, lv_color_hex(0x00E5FF), 0);
+    lv_obj_center(lbl_sw_title);
 
     // Main Elapsed Time (MM:SS)
     lbl_sw_time = lv_label_create(cont_stopwatch);
@@ -687,6 +721,7 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_align(btn_sw_start, LV_ALIGN_CENTER, -62, 65);
     lv_obj_set_style_radius(btn_sw_start, 20, 0);
     lv_obj_set_style_bg_color(btn_sw_start, lv_color_hex(0x00B060), 0);
+    lv_obj_set_style_shadow_width(btn_sw_start, 0, 0);
     lv_obj_add_event_cb(btn_sw_start, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     lbl_sw_start_txt = lv_label_create(btn_sw_start);
@@ -700,9 +735,10 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_size(btn_sw_clear, 106, 40);
     lv_obj_align(btn_sw_clear, LV_ALIGN_CENTER, 62, 65);
     lv_obj_set_style_radius(btn_sw_clear, 20, 0);
-    lv_obj_set_style_bg_color(btn_sw_clear, lv_color_hex(0x222C3A), 0);
+    lv_obj_set_style_bg_color(btn_sw_clear, lv_color_hex(0x121824), 0);
     lv_obj_set_style_border_width(btn_sw_clear, 1, 0);
-    lv_obj_set_style_border_color(btn_sw_clear, lv_color_hex(0x3B4C63), 0);
+    lv_obj_set_style_border_color(btn_sw_clear, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_shadow_width(btn_sw_clear, 0, 0);
     lv_obj_add_event_cb(btn_sw_clear, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_sw_clear_txt = lv_label_create(btn_sw_clear);
@@ -716,9 +752,10 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_size(btn_sw_exit, 110, 32);
     lv_obj_align(btn_sw_exit, LV_ALIGN_CENTER, 0, 118);
     lv_obj_set_style_radius(btn_sw_exit, 16, 0);
-    lv_obj_set_style_bg_color(btn_sw_exit, lv_color_hex(0x151D29), 0);
+    lv_obj_set_style_bg_color(btn_sw_exit, lv_color_hex(0x121824), 0);
     lv_obj_set_style_border_width(btn_sw_exit, 1, 0);
-    lv_obj_set_style_border_color(btn_sw_exit, lv_color_hex(0x28374D), 0);
+    lv_obj_set_style_border_color(btn_sw_exit, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_shadow_width(btn_sw_exit, 0, 0);
     lv_obj_add_event_cb(btn_sw_exit, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_sw_exit_txt = lv_label_create(btn_sw_exit);
@@ -726,7 +763,6 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_style_text_font(lbl_sw_exit_txt, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(lbl_sw_exit_txt, lv_color_hex(0x8A99AD), 0);
     lv_obj_center(lbl_sw_exit_txt);
-
 
     // =========================================================
     // 3. POMODORO VIEW CONTAINER
@@ -738,6 +774,16 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_style_border_width(cont_pomodoro, 0, 0);
     lv_obj_clear_flag(cont_pomodoro, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(cont_pomodoro, LV_OBJ_FLAG_HIDDEN);
+
+    // Base Dial Disc
+    lv_obj_t *pom_dial_disc = lv_obj_create(cont_pomodoro);
+    lv_obj_set_size(pom_dial_disc, 344, 344);
+    lv_obj_align(pom_dial_disc, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(pom_dial_disc, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(pom_dial_disc, lv_color_hex(0x0D111A), 0);
+    lv_obj_set_style_border_width(pom_dial_disc, 1, 0);
+    lv_obj_set_style_border_color(pom_dial_disc, lv_color_hex(0x1E2638), 0);
+    lv_obj_clear_flag(pom_dial_disc, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
     // Pomodoro Dynamic Circular Arc (Full circle reduced proportionally to 0)
     arc_pomodoro = lv_arc_create(cont_pomodoro);
@@ -755,12 +801,23 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_style_arc_color(arc_pomodoro, lv_color_hex(0x00E6A0), LV_PART_INDICATOR);
     lv_obj_set_style_arc_rounded(arc_pomodoro, true, LV_PART_INDICATOR);
 
-    // Title
-    lv_obj_t *lbl_pom_title = lv_label_create(cont_pomodoro);
+    // Title Pill
+    lv_obj_t *pom_title_pill = lv_obj_create(cont_pomodoro);
+    lv_obj_set_size(pom_title_pill, LV_SIZE_CONTENT, 24);
+    lv_obj_align(pom_title_pill, LV_ALIGN_CENTER, 0, -118);
+    lv_obj_set_style_radius(pom_title_pill, 12, 0);
+    lv_obj_set_style_bg_color(pom_title_pill, lv_color_hex(0x121824), 0);
+    lv_obj_set_style_border_width(pom_title_pill, 1, 0);
+    lv_obj_set_style_border_color(pom_title_pill, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_pad_hor(pom_title_pill, 12, 0);
+    lv_obj_set_style_pad_ver(pom_title_pill, 2, 0);
+    lv_obj_clear_flag(pom_title_pill, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *lbl_pom_title = lv_label_create(pom_title_pill);
     lv_label_set_text(lbl_pom_title, "POMODORO");
-    lv_obj_set_style_text_font(lbl_pom_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_pom_title, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(lbl_pom_title, lv_color_hex(0xFF6B4A), 0);
-    lv_obj_align(lbl_pom_title, LV_ALIGN_CENTER, 0, -118);
+    lv_obj_center(lbl_pom_title);
 
     // Large Digital Countdown (MM:SS) - default 25:00
     lbl_pom_time = lv_label_create(cont_pomodoro);
@@ -781,9 +838,10 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_size(btn_pom_add1, 56, 32);
     lv_obj_align(btn_pom_add1, LV_ALIGN_CENTER, -68, 24);
     lv_obj_set_style_radius(btn_pom_add1, 16, 0);
-    lv_obj_set_style_bg_color(btn_pom_add1, lv_color_hex(0x1B2636), 0);
+    lv_obj_set_style_bg_color(btn_pom_add1, lv_color_hex(0x121824), 0);
     lv_obj_set_style_border_width(btn_pom_add1, 1, 0);
-    lv_obj_set_style_border_color(btn_pom_add1, lv_color_hex(0x2D3E56), 0);
+    lv_obj_set_style_border_color(btn_pom_add1, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_shadow_width(btn_pom_add1, 0, 0);
     lv_obj_add_event_cb(btn_pom_add1, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_add1 = lv_label_create(btn_pom_add1);
@@ -796,9 +854,10 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_size(btn_pom_add5, 56, 32);
     lv_obj_align(btn_pom_add5, LV_ALIGN_CENTER, 0, 24);
     lv_obj_set_style_radius(btn_pom_add5, 16, 0);
-    lv_obj_set_style_bg_color(btn_pom_add5, lv_color_hex(0x1B2636), 0);
+    lv_obj_set_style_bg_color(btn_pom_add5, lv_color_hex(0x121824), 0);
     lv_obj_set_style_border_width(btn_pom_add5, 1, 0);
-    lv_obj_set_style_border_color(btn_pom_add5, lv_color_hex(0x2D3E56), 0);
+    lv_obj_set_style_border_color(btn_pom_add5, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_shadow_width(btn_pom_add5, 0, 0);
     lv_obj_add_event_cb(btn_pom_add5, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_add5 = lv_label_create(btn_pom_add5);
@@ -811,9 +870,10 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_size(btn_pom_add10, 56, 32);
     lv_obj_align(btn_pom_add10, LV_ALIGN_CENTER, 68, 24);
     lv_obj_set_style_radius(btn_pom_add10, 16, 0);
-    lv_obj_set_style_bg_color(btn_pom_add10, lv_color_hex(0x1B2636), 0);
+    lv_obj_set_style_bg_color(btn_pom_add10, lv_color_hex(0x121824), 0);
     lv_obj_set_style_border_width(btn_pom_add10, 1, 0);
-    lv_obj_set_style_border_color(btn_pom_add10, lv_color_hex(0x2D3E56), 0);
+    lv_obj_set_style_border_color(btn_pom_add10, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_shadow_width(btn_pom_add10, 0, 0);
     lv_obj_add_event_cb(btn_pom_add10, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_add10 = lv_label_create(btn_pom_add10);
@@ -828,6 +888,7 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_align(btn_pom_start, LV_ALIGN_CENTER, -62, 70);
     lv_obj_set_style_radius(btn_pom_start, 19, 0);
     lv_obj_set_style_bg_color(btn_pom_start, lv_color_hex(0x00B060), 0);
+    lv_obj_set_style_shadow_width(btn_pom_start, 0, 0);
     lv_obj_add_event_cb(btn_pom_start, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     lbl_pom_start_txt = lv_label_create(btn_pom_start);
@@ -841,9 +902,10 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_size(btn_pom_clear, 106, 38);
     lv_obj_align(btn_pom_clear, LV_ALIGN_CENTER, 62, 70);
     lv_obj_set_style_radius(btn_pom_clear, 19, 0);
-    lv_obj_set_style_bg_color(btn_pom_clear, lv_color_hex(0x222C3A), 0);
+    lv_obj_set_style_bg_color(btn_pom_clear, lv_color_hex(0x121824), 0);
     lv_obj_set_style_border_width(btn_pom_clear, 1, 0);
-    lv_obj_set_style_border_color(btn_pom_clear, lv_color_hex(0x3B4C63), 0);
+    lv_obj_set_style_border_color(btn_pom_clear, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_shadow_width(btn_pom_clear, 0, 0);
     lv_obj_add_event_cb(btn_pom_clear, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_pom_clear_txt = lv_label_create(btn_pom_clear);
@@ -857,9 +919,10 @@ void page_clock_create(lv_obj_t *parent) {
     lv_obj_set_size(btn_pom_exit, 110, 30);
     lv_obj_align(btn_pom_exit, LV_ALIGN_CENTER, 0, 118);
     lv_obj_set_style_radius(btn_pom_exit, 15, 0);
-    lv_obj_set_style_bg_color(btn_pom_exit, lv_color_hex(0x151D29), 0);
+    lv_obj_set_style_bg_color(btn_pom_exit, lv_color_hex(0x121824), 0);
     lv_obj_set_style_border_width(btn_pom_exit, 1, 0);
-    lv_obj_set_style_border_color(btn_pom_exit, lv_color_hex(0x28374D), 0);
+    lv_obj_set_style_border_color(btn_pom_exit, lv_color_hex(0x232E42), 0);
+    lv_obj_set_style_shadow_width(btn_pom_exit, 0, 0);
     lv_obj_add_event_cb(btn_pom_exit, on_btn_click, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *lbl_pom_exit_txt = lv_label_create(btn_pom_exit);
