@@ -314,131 +314,150 @@ async def async_main():
         print("[!] Note: winrt-Windows.Media.Control not found.")
         print("    Install dependencies via: pip install -r pc_companion/requirements.txt\n")
 
-    port = None
-    if len(sys.argv) > 1:
-        port = sys.argv[1]
-    else:
-        print("Scanning for Guition ESP32 USB COM port...")
-        port = find_esp32_port()
-
-    if not port:
-        print("[-] No ESP32 device found on USB.")
-        print("    Available ports:")
-        for p in serial.tools.list_ports.comports():
-            print(f"      - {p.device}: {p.description} (VID: {hex(p.vid) if p.vid else 'None'})")
-        print("\nUsage: python pc_companion/companion.py [COM_PORT]")
-        return
-
-    print(f"[+] Connecting to {port} at 115200 baud...")
-    try:
-        ser = serial.Serial(port, 115200, timeout=0.05)
-    except Exception as e:
-        print(f"[-] Failed to open {port}: {e}")
-        return
-
-    print(f"[+] Connected to {port}! Press Ctrl+C to exit.\n")
-
-    # Send configured shortcut names to device so labels display dynamically on the round screen
-    shortcuts_cfg = load_shortcuts_config()
-    shortcut_names = [shortcuts_cfg.get(str(i), {}).get("name", f"App {i}") for i in range(1, 7)]
-    ser.write((json.dumps({"type": "shortcuts_names", "names": shortcut_names}) + "\n").encode("utf-8"))
-    print(f"[Shortcuts] Synchronized shortcut labels with device: {shortcut_names}")
-
     media_watcher = MediaWatcher()
     await media_watcher.init_manager()
 
     teams_client = TeamsClient()
     teams_task = asyncio.create_task(teams_client.run())
 
-    last_bytes_recv = psutil.net_io_counters().bytes_recv
-    last_bytes_sent = psutil.net_io_counters().bytes_sent
-    last_net_check = time.time()
-    last_media_sent = 0
-    last_teams_sent = 0
+    def safe_send(ser_obj, pkt):
+        ser_obj.write((json.dumps(pkt) + "\n").encode("utf-8"))
 
     try:
         while True:
-            now = datetime.datetime.now()
-            current_time = time.time()
+            port = None
+            if len(sys.argv) > 1:
+                port = sys.argv[1]
+            else:
+                port = find_esp32_port()
 
-            # 1. Send Clock Sync Packet (every ~500ms)
-            clock_pkt = {
-                "type": "clock",
-                "hour": now.hour,
-                "minute": now.minute,
-                "sec": now.second,
-                "date": now.strftime("%d %b"),
-                "day": now.strftime("%A")
-            }
-            ser.write((json.dumps(clock_pkt) + "\n").encode("utf-8"))
+            if not port:
+                print("[-] Searching for Guition ESP32 USB COM port... (retrying in 2s)")
+                await asyncio.sleep(2.0)
+                continue
 
-            # 2. Send Hardware Telemetry (every 1.0 second)
-            dt = current_time - last_net_check
-            if dt >= 1.0:
-                net = psutil.net_io_counters()
-                down_mb = ((net.bytes_recv - last_bytes_recv) / dt) / (1024 * 1024)
-                up_mb = ((net.bytes_sent - last_bytes_sent) / dt) / (1024 * 1024)
-                last_bytes_recv = net.bytes_recv
-                last_bytes_sent = net.bytes_sent
-                last_net_check = current_time
+            print(f"[+] Connecting to {port} at 115200 baud...")
+            try:
+                ser = serial.Serial(port, 115200, timeout=0.05)
+            except Exception as e:
+                print(f"[-] Could not open {port}: {e}. Retrying in 2s...")
+                await asyncio.sleep(2.0)
+                continue
 
-                cpu_pct = int(psutil.cpu_percent())
-                ram_pct = int(psutil.virtual_memory().percent)
+            print(f"[+] Connected to {port}! Press Ctrl+C to exit.\n")
 
-                hw_pkt = {
-                    "type": "hw",
-                    "cpu": cpu_pct,
-                    "ram": ram_pct,
-                    "down": round(down_mb, 1),
-                    "up": round(up_mb, 1)
-                }
-                ser.write((json.dumps(hw_pkt) + "\n").encode("utf-8"))
+            # Synchronize shortcut labels upon connection
+            try:
+                shortcuts_cfg = load_shortcuts_config()
+                shortcut_names = [shortcuts_cfg.get(str(i), {}).get("name", f"App {i}") for i in range(1, 7)]
+                safe_send(ser, {"type": "shortcuts_names", "names": shortcut_names})
+                print(f"[Shortcuts] Synchronized shortcut labels with device: {shortcut_names}")
+            except (serial.SerialException, OSError) as e:
+                print(f"[-] Initial sync failed ({e}). Reconnecting...")
+                try:
+                    ser.close()
+                except Exception:
+                    pass
+                await asyncio.sleep(2.0)
+                continue
 
-            # 3. Send Media Packet (every 500ms)
-            if current_time - last_media_sent >= 0.5:
-                last_media_sent = current_time
-                media_pkt = await media_watcher.get_media_packet()
-                ser.write((json.dumps(media_pkt) + "\n").encode("utf-8"))
+            last_bytes_recv = psutil.net_io_counters().bytes_recv
+            last_bytes_sent = psutil.net_io_counters().bytes_sent
+            last_net_check = time.time()
+            last_media_sent = 0
+            last_teams_sent = 0
 
-            # 4. Send MS Teams State (on change or every 2.0 seconds)
-            if teams_client.state_changed or (current_time - last_teams_sent >= 2.0):
-                last_teams_sent = current_time
-                teams_pkt = teams_client.get_packet()
-                ser.write((json.dumps(teams_pkt) + "\n").encode("utf-8"))
+            try:
+                while True:
+                    now = datetime.datetime.now()
+                    current_time = time.time()
 
-            # 5. Check Workstation Lock State
-            if is_workstation_locked():
-                ser.write((json.dumps({"type": "lock", "locked": True}) + "\n").encode("utf-8"))
+                    # 1. Send Clock Sync Packet (every ~500ms)
+                    clock_pkt = {
+                        "type": "clock",
+                        "hour": now.hour,
+                        "minute": now.minute,
+                        "sec": now.second,
+                        "date": now.strftime("%d %b"),
+                        "day": now.strftime("%A")
+                    }
+                    safe_send(ser, clock_pkt)
 
-            # 6. Read incoming responses or events from device
-            while ser.in_waiting:
-                line = ser.readline().decode("utf-8", errors="ignore").strip()
-                if line:
-                    print(f"[Device]: {line}")
-                    if line.startswith("{"):
-                        try:
-                            cmd_data = json.loads(line)
-                            cmd = cmd_data.get("cmd")
-                            if cmd == "shortcut":
-                                num = cmd_data.get("num")
-                                if num is not None:
-                                    launch_shortcut(int(num))
-                            elif cmd == "teams_toggle_mute":
-                                await teams_client.toggle_mute()
-                                ser.write((json.dumps(teams_client.get_packet()) + "\n").encode("utf-8"))
-                            elif cmd == "teams_toggle_hand":
-                                await teams_client.toggle_hand()
-                                ser.write((json.dumps(teams_client.get_packet()) + "\n").encode("utf-8"))
-                        except Exception as e:
-                            print(f"[Device] Error handling command: {e}")
+                    # 2. Send Hardware Telemetry (every 1.0 second)
+                    dt = current_time - last_net_check
+                    if dt >= 1.0:
+                        net = psutil.net_io_counters()
+                        down_mb = ((net.bytes_recv - last_bytes_recv) / dt) / (1024 * 1024)
+                        up_mb = ((net.bytes_sent - last_bytes_sent) / dt) / (1024 * 1024)
+                        last_bytes_recv = net.bytes_recv
+                        last_bytes_sent = net.bytes_sent
+                        last_net_check = current_time
 
-            await asyncio.sleep(0.5)
+                        cpu_pct = int(psutil.cpu_percent())
+                        ram_pct = int(psutil.virtual_memory().percent)
+
+                        hw_pkt = {
+                            "type": "hw",
+                            "cpu": cpu_pct,
+                            "ram": ram_pct,
+                            "down": round(down_mb, 1),
+                            "up": round(up_mb, 1)
+                        }
+                        safe_send(ser, hw_pkt)
+
+                    # 3. Send Media Packet (every 500ms)
+                    if current_time - last_media_sent >= 0.5:
+                        last_media_sent = current_time
+                        media_pkt = await media_watcher.get_media_packet()
+                        safe_send(ser, media_pkt)
+
+                    # 4. Send MS Teams State (on change or every 2.0 seconds)
+                    if teams_client.state_changed or (current_time - last_teams_sent >= 2.0):
+                        last_teams_sent = current_time
+                        teams_pkt = teams_client.get_packet()
+                        safe_send(ser, teams_pkt)
+
+                    # 5. Check Workstation Lock State
+                    if is_workstation_locked():
+                        safe_send(ser, {"type": "lock", "locked": True})
+
+                    # 6. Read incoming responses or events from device
+                    while ser.in_waiting:
+                        line = ser.readline().decode("utf-8", errors="ignore").strip()
+                        if line:
+                            print(f"[Device]: {line}")
+                            if line.startswith("{"):
+                                try:
+                                    cmd_data = json.loads(line)
+                                    cmd = cmd_data.get("cmd")
+                                    if cmd == "shortcut":
+                                        num = cmd_data.get("num")
+                                        if num is not None:
+                                            launch_shortcut(int(num))
+                                    elif cmd == "teams_toggle_mute":
+                                        await teams_client.toggle_mute()
+                                        safe_send(ser, teams_client.get_packet())
+                                    elif cmd == "teams_toggle_hand":
+                                        await teams_client.toggle_hand()
+                                        safe_send(ser, teams_client.get_packet())
+                                except Exception as e:
+                                    print(f"[Device] Error handling command: {e}")
+
+                    await asyncio.sleep(0.5)
+
+            except (serial.SerialException, OSError) as e:
+                print(f"\n[Serial] Device connection lost / reset: {e}")
+                print("[Serial] Knob device was reset, disconnected, or flashed. Auto-reconnecting in 2s...\n")
+                try:
+                    ser.close()
+                except Exception:
+                    pass
+                await asyncio.sleep(2.0)
 
     except (KeyboardInterrupt, asyncio.CancelledError):
         print("\nExiting companion service.")
     finally:
         teams_task.cancel()
-        ser.close()
 
 
 
